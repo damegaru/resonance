@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Résonance | Chopin</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <canvas id="favicon-canvas" style="display:none"></canvas>
+    <link rel="icon" href="./chopin.jpeg" />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Raleway:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        :root {
+            --font-serif: 'Playfair Display', serif;
+            --font-sans: 'Raleway', sans-serif;
+            --bg-base: #0a0a0a;
+            --text-light: #f5f5f0;
+            --text-muted: #8a8a8a;
+            --accent-gold: #c5a059;
+            --border-subtle: rgba(255, 255, 255, 0.1);
+        }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            background-color: var(--bg-base);
+            color: var(--text-light);
+            font-family: var(--font-sans);
+            font-weight: 300;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; opacity: 0; transition: opacity 1.5s ease; }
+        #map-loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 300;
+            color: var(--accent-gold);
+            font-family: var(--font-sans);
+            font-size: 0.75rem;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        /* --- ANIMATED LOADING DOTS --- */
+        .animated-dots::after {
+            content: '';
+            animation: dot-blink 1.5s infinite steps(1);
+        }
+
+        @keyframes dot-blink {
+            0%   { content: ''; }
+            25%  { content: '.'; }
+            50%  { content: '..'; }
+            75%  { content: '...'; }
+            100% { content: ''; }
+        }
+        #app-header {
+            position: absolute;
+            top: 40px;
+            left: 50px;
+            z-index: 400;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 1s ease 0.2s;
+            pointer-events: none;
+        }
+
+        #app-header.visible { opacity: 1; visibility: visible; }
+        #app-header h1 { font-family: var(--font-serif); color: var(--text-light); font-size: 2rem; margin: 0; letter-spacing: 8px; text-transform: uppercase; text-shadow: 0 4px 15px rgba(0,0,0,0.8); }
+        #app-header p { font-family: var(--font-sans); color: var(--accent-gold); font-size: 0.75rem; margin: 5px 0 0 0; letter-spacing: 3px; text-transform: uppercase; text-shadow: 0 4px 15px rgba(0,0,0,0.8); }
+
+        /* --- MINIMALIST INTRO SCREEN (SOLID BACKGROUND) --- */
+        @keyframes revealPainting {
+            from { background-color: #0a0a0a; background-image: none; }
+            to   { background-color: transparent; }
+        }
+
+        #intro-screen {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-image: url('./Wanderer_above_the_sea_of_fog.jpg');
+            background-size: cover;
+            background-position: center top;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000; transition: opacity 1.2s ease, visibility 1.2s;
+        }
+
+        #intro-screen::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: #0a0a0a;
+            z-index: 0;
+            animation: darkenLift 3s ease forwards;
+        }
+
+        @keyframes darkenLift {
+            from { opacity: 1; }
+            to   { opacity: 0.5; } /* 0.4 = image at ~60% brightness, tweak to taste */
+        }
+
+        #intro-screen > * {
+            position: relative;
+            z-index: 1;
+        }
+        
+        #intro-screen h1 { font-family: var(--font-serif); color: var(--text-light); font-size: 4.5rem; font-weight: 400; letter-spacing: 12px; margin: 0 0 15px 12px; text-transform: uppercase; text-align: center; }
+        #intro-screen p { font-family: var(--font-sans); color: #d4aa5f; font-size: 0.9rem; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 50px; text-align: center; text-shadow: 0 0 20px rgba(197, 160, 89, 0.8); }
+        .btn-enter {
+            padding: 12px 35px; background: transparent; border: 1px solid var(--text-muted);
+            color: var(--text-light); font-family: var(--font-sans); font-size: 0.8rem;
+            letter-spacing: 3px; cursor: pointer; transition: all 0.4s ease; text-transform: uppercase;
+        }
+        .btn-enter:hover { background: var(--text-light); color: var(--bg-base); border-color: var(--text-light); }
+
+        /* --- RETURNING USER SCREEN --- */
+        #intro-screen.returning {
+            background-image: none;
+            background-color: #0a0a0a;
+            justify-content: center;
+            gap: 40px;
+        }
+        #intro-screen.returning::before {
+            animation: none;
+            opacity: 0;
+        }
+        #intro-screen.returning h1 {
+            display: none;
+        }
+        #intro-screen.returning p {
+            margin-bottom: 0;
+            font-size: 0.75rem;
+            letter-spacing: 4px;
+            text-shadow: none;
+        }
+
+        /* --- EDITORIAL INFO PANEL (SOLID BACKGROUND) --- */
+        #infoPanel {
+            position: absolute; top: 0; right: -500px; bottom: 0;
+            width: 480px; max-width: 100vw; height: 100vh;
+            background: #0d0d0d; /* Solid dark grey so the map doesn't peek through at all */
+            border-left: 1px solid var(--border-subtle);
+            z-index: 500; padding: 60px 50px; box-sizing: border-box;
+            overflow-y: auto; 
+            transition: right 1.5s ease-in-out, bottom 1.5s ease-in-out;
+        }
+        #infoPanel.open { right: 0; }
+        #infoPanel::-webkit-scrollbar { width: 2px; }
+        #infoPanel::-webkit-scrollbar-track { background: transparent; }
+        #infoPanel::-webkit-scrollbar-thumb { background: var(--accent-gold); }
+
+        /* --- MOBILE OPTIMIZATION --- */
+@media (max-width: 768px) {
+    #app-header { top: 20px; left: 20px; }
+    #app-header h1 { font-size: 1.5rem; }
+
+    #intro-screen h1 { 
+        font-size: 2.8rem; 
+        letter-spacing: 6px; 
+        margin: 0 0 10px 0; 
+    }
+    #intro-screen p { 
+        font-size: 0.75rem; 
+        letter-spacing: 2px; 
+        margin-bottom: 35px;
+        padding: 0 20px;
+    }
+    .btn-enter { 
+        padding: 10px 28px; 
+        font-size: 0.75rem; 
+        letter-spacing: 2px; 
+    }
+
+    #infoPanel {
+        width: 100vw; height: 60vh;
+        top: auto; right: 0; bottom: -60vh;
+        border-left: none; border-top: 1px solid var(--border-subtle);
+        padding: 40px 30px;
+    }
+    #infoPanel.open { bottom: 0; right: 0; }
+    
+    .city-title { font-size: 2.5rem; }
+}
+
+        .city-title { font-family: var(--font-serif); color: var(--text-light); font-size: 3.5rem; font-weight: 400; margin: 0; text-transform: uppercase; letter-spacing: 4px; }
+        .city-meta { display: block; color: var(--accent-gold); font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; margin-top: 10px; margin-bottom: 30px; }
+        .city-context { font-family: var(--font-serif); font-style: italic; font-size: 1.15rem; line-height: 1.7; color: #d0d0d0; margin-bottom: 50px; }
+        
+        .etude-list { display: flex; flex-direction: column; gap: 40px; padding-bottom: 40px; }
+        .etude-card { position: relative; }
+        .etude-title { font-family: var(--font-sans); font-size: 1.1rem; font-weight: 500; letter-spacing: 1px; margin: 0 0 5px 0; color: var(--text-light); }
+        .etude-nickname { font-family: var(--font-serif); font-style: italic; color: var(--accent-gold); font-size: 1.2rem; display: block; margin-bottom: 12px; }
+        .etude-desc { font-size: 0.85rem; line-height: 1.6; color: var(--text-muted); margin: 0 0 20px 0; }
+
+        .chic-marker { 
+            width: 16px; height: 16px; background: var(--accent-gold); 
+            border-radius: 50%; 
+            box-shadow: 0 0 0 6px rgba(197, 160, 89, 0.2), 0 0 30px 8px rgba(197, 160, 89, 0.6); 
+            border: 2px solid #fff; 
+            transition: box-shadow 0.15s ease-out; 
+        }
+        .chic-marker:hover { 
+            box-shadow: 0 0 0 10px rgba(197, 160, 89, 0.25), 0 0 40px 12px rgba(197, 160, 89, 0.8); 
+            cursor: pointer; 
+        }
+    </style>
+</head>
+<body>
+
+    <header id="app-header">
+        <h1>Résonance</h1>
+        <p>A Geographic Journey of Chopin's Études</p>
+    </header>
+
+    <div id="intro-screen">
+        <h1>Résonance</h1>
+        <p>A Geographic Journey of Chopin's Études</p>
+        <button class="btn-enter" id="enterBtn">Enter</button>
+    </div>
+
+    <div id="infoPanel"></div>
+    <div id="map-loader">Mapping the journey<span class="animated-dots"></span></div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+    const intro = document.getElementById('intro-screen');
+    const header = document.getElementById('app-header');
+    const enterBtn = document.getElementById('enterBtn');
+    
+    // Grab the subtitle paragraph inside the intro screen
+    const introSubtitle = intro.querySelector('p'); 
+
+    // 1. Check if they have visited before using localStorage
+    if (localStorage.getItem('resonance_visited') === 'true') {
+    intro.classList.add('returning');
+    introSubtitle.textContent = "Welcome back. Continue your exploration?";
+    enterBtn.textContent = "Continue Journey";
+    }
+
+    // 2. Handle the click (this works for BOTH "Enter" and "Continue Journey")
+    enterBtn.addEventListener('click', () => {
+        // Save their visit so they get the "Continue" screen next time
+        localStorage.setItem('resonance_visited', 'true');
+
+        // Start the fade out
+        intro.style.transition = 'opacity 3.0s ease';
+        intro.style.opacity = '0';
+        intro.style.pointerEvents = 'none';
+
+        setTimeout(() => {
+            // Hide the intro
+            intro.style.display = 'none';
+            intro.style.visibility = 'hidden';
+
+            // Show ONLY the loader
+            const loader = document.getElementById('map-loader');
+            loader.style.opacity = '1';
+
+            map.invalidateSize(); 
+
+            // Wait 2.5s, then hide loader and show the map/header
+            setTimeout(() => {
+                loader.style.opacity = '0';
+                header.classList.add('visible');
+
+                const mapElement = document.getElementById('map');
+                mapElement.style.transition = 'opacity 2.5s ease';
+                mapElement.style.opacity = '1';
+
+                map.flyTo([49.0, 10.0], 4.5, { duration: 2.35, easeLinearity: 1.0, animate: true, noMoveStart: true });
+                
+            }, 2500);
+
+        }, 2500);
+    });
+});
+
+        const map = L.map('map', { zoomControl: false, zoomSnap: 0, zoomDelta: 0.5 }).setView([49.0, 10.0], 3);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; CartoDB', subdomains: 'abcd', maxZoom: 19
+        }).addTo(map);
+
+        const customMarker = L.divIcon({ className: 'chic-marker', iconSize: [16, 16], iconAnchor: [8, 8] });
+
+        const chopinData = {
+    warsaw: {
+        name: "Warsaw", country: "Poland", coords: [52.2393, 21.0153],
+        context: "Before leaving his childhood home at the Czapski Palace (Krakowskie Przedmieście 5), a teenage Chopin was already dismantling centuries of traditional piano technique.",
+        pieces: [
+            { title: "Op. 10 No. 1 in C Major", nickname: "Waterfall", desc: "Dedicated to Franz Liszt, this piece forces the right hand into terrifying, sweeping arpeggios spanning up to an eleventh. The virtuoso Vladimir Horowitz considered it the most difficult of all Chopin's Études, famously refusing to perform it in public.", spotifyId: "0ndZJO5FSKTSC8SRdALXZU" },
+            { title: "Op. 10 No. 2 in A Minor", nickname: "Chromatic", desc: "A grueling workout written specifically to strengthen the notoriously weak third, fourth, and fifth fingers. It isolates them in a rapid chromatic scale while the thumb and index finger provide accompaniment.", spotifyId: "7zYYiAb8tlUZULdBBrr2jx" },
+            { title: "Op. 10 No. 7 in C Major", nickname: "Toccata", desc: "A lively study in alternating double notes (thirds and sixths) that trains the pianist to maintain a light, bouncing wrist while changing intervals.", spotifyId: "2IdrIUkGan2MkauujjleC7" },
+            { title: "Op. 10 No. 8 in F Major", nickname: "Sunshine", desc: "A brilliant, joyful exercise where the right hand glides effortlessly up and down the keyboard over a commanding, structural left-hand melody.", spotifyId: "3HaN5aHRNSHj2OYecCKWDB" },
+            { title: "Op. 10 No. 9 in F Minor", desc: "Dedicated to developing extreme flexibility in the left wrist. The left hand is forced into wide, continuous, and agitated stretches that never let up.", spotifyId: "3YnPmD7O4ASK1b9ToYW9zw" },
+            { title: "Op. 10 No. 10 in A-flat Major", nickname: "The Harp", desc: "A masterful study in articulation, forcing the performer to constantly alter their phrasing and accents on the fly to mimic the shifting textures of a harp.", spotifyId: "3qA0Qda6wcgzGyKasr8G1i" },
+            { title: "Op. 10 No. 11 in E-flat Major", nickname: "Arpeggio", desc: "Focuses entirely on playing ultra-wide, rolled chords in both hands simultaneously, creating a shimmering, dreamlike texture.", spotifyId: "0AkwCwYMbwluP6WKJGMucJ" }
+        ]
+    },
+    vienna: {
+        name: "Vienna", country: "Austria", coords: [48.2088, 16.3672],
+        context: "Trapped in Vienna for a lonely winter in 1830, Chopin rented a room at Kohlmarkt 9. Deeply homesick, he composed in isolation.",
+        pieces: [
+            { title: "Op. 10 No. 5 in G-flat Major", nickname: "Black Key", desc: "A sparkling constraint-based exercise where the right hand plays almost exclusively on the black keys, requiring a flattened hand angle and a unique thumb technique.", spotifyId: "1skBipMbdCClGUNHBFJFYn" },
+            { title: "Op. 10 No. 6 in E-flat Minor", nickname: "Lament", desc: "Not a study in speed, but in polyphonic voicing. The pianist must project a slow, mourning melody over a constantly weaving chromatic middle voice without blurring the lines.", spotifyId: "0iiKUd0auI7AuEMUbLtWFL" }
+        ]
+    },
+    stuttgart: {
+        name: "Stuttgart", country: "Germany", coords: [48.7784, 9.1800],
+        context: "September 1831: While staying at the Hotel Marquardt, Chopin learned the Russian Empire had violently crushed the Polish November Uprising. His heartbreak gave birth to a legend.",
+        pieces: [
+            { title: "Op. 10 No. 12 in C Minor", nickname: "Revolutionary", desc: "Written in absolute despair over the fall of Warsaw. It is a dramatic, furious workout designed to give the left hand the agility of a right hand, executing devastating runs under crashing chords that symbolize the chaos of war.", spotifyId: "2TDbO42FkShXZI55HghNOo" }
+        ]
+    },
+    paris: {
+        name: "Paris", country: "France", coords: [48.8718, 2.3323],
+        context: "Safe in the cultural capital of the world at 27 Boulevard Poissonnière, Chopin cemented his legacy. He finished Opus 10 here and dedicated his subsequent Opus 25 set to Marie d'Agoult, Liszt's lover.",
+        pieces: [
+            { title: "Op. 25 No. 1 in A-flat Major", nickname: "Aeolian Harp", desc: "A study in playing delicate, murmuring inner arpeggios while voicing a gentle melody on the top notes, creating the illusion of wind blowing over strings.", spotifyId: "27Tl9HCe5JKqqKVD9Mko3l" },
+            { title: "Op. 25 No. 2 in F Minor", nickname: "The Bees", desc: "A study in polyrhythm and extreme dynamic control. The pianist must maintain a quiet, rapid flutter that never raises above a whisper.", spotifyId: "3WGbr7c0eJ1DUyLvrTXWtW" },
+            { title: "Op. 25 No. 3 in F Major", nickname: "The Horseman", desc: "Focuses on rhythmic precision and lateral wrist movement with a galloping, bouncing rhythm.", spotifyId: "4tYy1qPDVt8N4kWu0uucS3" },
+            { title: "Op. 25 No. 4 in A Minor", nickname: "Paganini", desc: "A relentless study in staccato and syncopation where the left hand leaps vigorously, forcing the pianist to land on precise chords blindly.", spotifyId: "1oiCTUOR4YRTe7LkqoZxIO" },
+            { title: "Op. 25 No. 5 in E Minor", nickname: "Wrong Note", desc: "Marking a serious departure from expected technique, this highly dissonant, playful scherzo is filled with jarring minor seconds, training the pianist to quickly roll off a clashing 'wrong note' into harmony.", spotifyId: "5pSqeQGRZWn4R2boErcpqZ" },
+            { title: "Op. 25 No. 6 in G-sharp Minor", nickname: "Thirds", desc: "One of the most feared pieces in the repertoire, dedicated solely to playing blindingly fast, perfectly even trills and scales in double thirds.", spotifyId: "3psHSXwDcmORH6ZAiJi1XF" },
+            { title: "Op. 25 No. 7 in C-sharp Minor", nickname: "Cello", desc: "A study in left-hand voicing where the pianist must make the left hand sound like a deep, mournful cello.", spotifyId: "0RAyUDOpyH8kYaNgVEWuMn" },
+            { title: "Op. 25 No. 8 in D-flat Major", nickname: "Sixths", desc: "A grueling physical exercise for both hands playing parallel sixths simultaneously, demanding a highly relaxed wrist to prevent cramping.", spotifyId: "39lDqNE1CkvAFOCzgnu3vk" },
+            { title: "Op. 25 No. 9 in G-flat Major", nickname: "Butterfly", desc: "A lighthearted but tricky study in wrist staccato. The pianist's hands must bounce across octaves with extreme lightness.", spotifyId: "29t32GbAnVneO9dRHW69Dy" },
+            { title: "Op. 25 No. 10 in B Minor", nickname: "Octave", desc: "A thunderous endurance test forcing both hands to play continuous legato octaves at maximum volume, mimicking an inescapable storm.", spotifyId: "3A828tRHayDDHjOYHXF5kq" },
+            { title: "Op. 25 No. 11 in A Minor", nickname: "Winter Wind", desc: "A terrifying stamina builder where the right hand must survive a continuous avalanche of chromatic notes while the left plays a chilling march.", spotifyId: "6Xj84gVNtBWICbnfiC6O1C" },
+            { title: "Op. 25 No. 12 in C Minor", nickname: "Ocean", desc: "A majestic conclusion focusing on massive, sweeping arpeggios that crash up and down the entire keyboard like tidal waves.", spotifyId: "0gdFogZUqAHrnPM1M5Wewg" }
+        ]
+    }
+};
+
+        const infoPanel = document.getElementById('infoPanel');
+
+        function openPanel(cityId) {
+            const data = chopinData[cityId];
+            if (!data) return;
+
+            let piecesHtml = data.pieces.map(piece => `
+                <div class="etude-card">
+                    <h3 class="etude-title">${piece.title}</h3>
+                    ${piece.nickname ? `<span class="etude-nickname">"${piece.nickname}"</span>` : ''}
+                    <p class="etude-desc">${piece.desc}</p>
+                    ${piece.spotifyId ? `
+                        <iframe
+                            src="https://open.spotify.com/embed/track/${piece.spotifyId}?theme=0"
+                            width="100%" height="80" frameborder="0"
+                            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                            loading="lazy" style="border-radius:6px; display:block;">
+                        </iframe>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            infoPanel.innerHTML = `
+                <h2 class="city-title">${data.name}</h2>
+                <span class="city-meta">${data.country} &nbsp; // &nbsp; ${data.coords[0].toFixed(2)}°N, ${data.coords[1].toFixed(2)}°E</span>
+                <p class="city-context">${data.context}</p>
+                <div class="etude-list">${piecesHtml}</div>
+            `;
+            
+            infoPanel.classList.add('open');
+            infoPanel.scrollTop = 0;
+        }
+
+        for (const [key, data] of Object.entries(chopinData)) {
+            const marker = L.marker(data.coords, { icon: customMarker, autoPan: false }).addTo(map);
+            marker.on('click', () => {
+                const zoomLevel = 6;
+                let targetPoint = map.project(data.coords, zoomLevel);
+                
+                if (window.innerWidth > 768) {
+                    targetPoint.x += 240; 
+                } else {
+                    targetPoint.y += (window.innerHeight * 0.60) / 2; 
+                }
+                
+                let targetLatLng = map.unproject(targetPoint, zoomLevel);
+                
+                map.flyTo(targetLatLng, zoomLevel, { 
+                    duration: 1.15,        // Slower, elegant flight
+                    easeLinearity: 0.9   // Flat speed curve
+                });
+                openPanel(key);
+            });
+        }
+
+        map.on('click', () => { infoPanel.classList.remove('open'); });
+
+    </script>
+</body>
+</html>
